@@ -1,0 +1,35 @@
+# Sample URL list: one URL per line; blank lines and # comments are ignored.
+# Replace these with pages you are allowed to scrape.
+https://example.com
+https://example.org
+https://go.dev
+https://pkg.go.dev/net/http
+https://www.iana.org/domains/reserved
+
+# --- Sites built for scraping practice (safe to use) ---
+https://quotes.toscrape.com/page/1/
+https://quotes.toscrape.com/page/2/
+https://quotes.toscrape.com/page/3/
+https://quotes.toscrape.com/page/4/
+https://quotes.toscrape.com/page/5/
+https://books.toscrape.com/catalogue/page-1.html
+https://books.toscrape.com/catalogue/page-2.html
+https://books.toscrape.com/catalogue/page-3.html
+https://books.toscrape.com/catalogue/page-4.html
+https://books.toscrape.com/catalogue/page-5.html
+
+# --- Different sites, so connections happen in parallel ---
+https://example.com
+https://example.org
+https://go.dev
+https://go.dev/doc/
+https://pkg.go.dev/net/http
+https://pkg.go.dev/context
+https://en.wikipedia.org/wiki/Go_(programming_language)
+https://en.wikipedia.org/wiki/Concurrency_(computer_science)
+https://en.wikipedia.org/wiki/Web_scraping
+https://www.iana.org/domains/reserved
+
+# --- Deliberate failures, to show error handling in the summary ---
+https://httpbin.org/status/404
+https://httpbin.org/status/503
