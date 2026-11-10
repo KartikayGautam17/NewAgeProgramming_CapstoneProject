@@ -1,3 +1,5 @@
+# Team Members - Kartikay Gautam (2301010137) | N.Yugesh (2301010199)
+
 # Concurrent Web Scraper in Go
 
 ENSP465 Capstone, Phase II (implementation). A command-line tool that downloads
