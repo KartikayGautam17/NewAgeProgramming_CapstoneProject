@@ -39,7 +39,7 @@ Positional arguments are extra URLs. Blank lines, `#` comments, invalid URLs
 (not http/https) and duplicates are skipped. Ctrl+C stops the run cleanly and
 saves the results gathered so far.
 
-## Design (matches the Phase I report)
+## Design (Matches the Phase I report)
 
 ```
 URLs -> [M1 config/loader] -> [M2 dispatcher] --jobs chan--> [M3 N workers: fetch + parse]
