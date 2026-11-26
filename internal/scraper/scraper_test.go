@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -199,5 +200,76 @@ func benchRun(b *testing.B, workers int, seq bool) {
 		} else {
 			s.Run(context.Background(), urls)
 		}
+	}
+}
+
+func TestRateLimitSpacesRequestsToOneHost(t *testing.T) {
+	var mu sync.Mutex
+	var arrivals []time.Time
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		arrivals = append(arrivals, time.Now())
+		mu.Unlock()
+		fmt.Fprint(w, "<title>x</title>")
+	}))
+	defer srv.Close()
+
+	var urls []string
+	for i := 0; i < 8; i++ {
+		urls = append(urls, fmt.Sprintf("%s/p/%d", srv.URL, i))
+	}
+	// 8 workers could fetch all at once; the limiter must still space them 50 ms apart.
+	s := New(fetcher.NewHTTPFetcher(5*time.Second, "t"), Options{Workers: 8, Rate: 20})
+	start := time.Now()
+	res := s.Run(context.Background(), urls)
+	total := time.Since(start)
+
+	for _, r := range res {
+		if !r.OK() {
+			t.Fatalf("unexpected failure: %+v", r)
+		}
+	}
+	if total < 330*time.Millisecond { // 7 gaps x 50 ms = 350 ms
+		t.Errorf("8 requests at 20/s took %v, want at least ~350ms", total)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	sort.Slice(arrivals, func(i, j int) bool { return arrivals[i].Before(arrivals[j]) })
+	for i := 1; i < len(arrivals); i++ {
+		if gap := arrivals[i].Sub(arrivals[i-1]); gap < 30*time.Millisecond {
+			t.Errorf("requests %d and %d arrived only %v apart, want about 50ms", i-1, i, gap)
+		}
+	}
+}
+
+func TestRateLimitDoesNotDelayDifferentHosts(t *testing.T) {
+	a, b := newServer(t, 0), newServer(t, 0)                                           // different ports => different hosts
+	s := New(fetcher.NewHTTPFetcher(5*time.Second, "t"), Options{Workers: 2, Rate: 2}) // 500 ms per host
+	start := time.Now()
+	res := s.Run(context.Background(), []string{a.URL + "/ok/1", b.URL + "/ok/1"})
+	if d := time.Since(start); d > 300*time.Millisecond {
+		t.Errorf("first request to each of two hosts took %v, want immediate", d)
+	}
+	if len(res) != 2 || !res[0].OK() || !res[1].OK() {
+		t.Errorf("unexpected results: %+v", res)
+	}
+}
+
+func TestRateLimitedWorkersStopOnCancel(t *testing.T) {
+	srv := newServer(t, 0)
+	var urls []string
+	for i := 0; i < 50; i++ {
+		urls = append(urls, fmt.Sprintf("%s/ok/%d", srv.URL, i))
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	s := New(fetcher.NewHTTPFetcher(5*time.Second, "t"), Options{Workers: 5, Rate: 2}) // would need ~25 s
+	start := time.Now()
+	res := s.Run(ctx, urls)
+	if time.Since(start) > 2*time.Second {
+		t.Error("rate-limited run did not stop promptly after cancellation")
+	}
+	if len(res) >= len(urls) {
+		t.Errorf("expected a partial result set, got %d", len(res))
 	}
 }

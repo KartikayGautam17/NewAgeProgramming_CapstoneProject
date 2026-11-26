@@ -54,4 +54,24 @@ func main() {
 		}
 		fmt.Printf("%-22s %12s %9.1fx   (%d/%d ok)\n", fmt.Sprintf("%d workers", w), d.Round(time.Millisecond), float64(base)/float64(d), ok, len(urls))
 	}
+	rateTable(f, urls, 10)
+}
+
+// rateTable shows the effect of the per-host rate limiter: with every page on
+// one host (as here), a lower rate spaces requests out even with many workers.
+func rateTable(f fetcher.Fetcher, urls []string, workers int) {
+	if len(urls) > 20 {
+		urls = urls[:20]
+	}
+	fmt.Printf("\nEffect of the per-host rate limit (%d pages, %d workers, one host)\n\n", len(urls), workers)
+	fmt.Printf("%-22s %12s\n", "Rate limit", "Time")
+	for _, r := range []float64{0, 50, 20, 10} {
+		name := "unlimited"
+		if r > 0 {
+			name = fmt.Sprintf("%g requests/s", r)
+		}
+		start := time.Now()
+		scraper.New(f, scraper.Options{Workers: workers, Rate: r}).Run(context.Background(), urls)
+		fmt.Printf("%-22s %12s\n", name, time.Since(start).Round(time.Millisecond))
+	}
 }

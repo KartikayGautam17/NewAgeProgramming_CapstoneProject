@@ -9,7 +9,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/url"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +25,7 @@ type Options struct {
 	Workers int           // number of worker goroutines (>= 1)
 	Retries int           // extra attempts after the first for temporary failures
 	Backoff time.Duration // delay before first retry; doubles each time
+	Rate    float64       // max requests per second to any single host; 0 = unlimited
 
 	// Progress, if set, is called by the collector after each result.
 	// It runs on a single goroutine, so it needs no locking.
@@ -31,8 +34,9 @@ type Options struct {
 
 // Scraper downloads and parses pages using a Fetcher.
 type Scraper struct {
-	fetch fetcher.Fetcher
-	opts  Options
+	fetch   fetcher.Fetcher
+	opts    Options
+	limiter *hostLimiter // nil when no rate limit is set
 }
 
 // New creates a Scraper. Workers below 1 is treated as 1.
@@ -43,7 +47,7 @@ func New(f fetcher.Fetcher, opts Options) *Scraper {
 	if opts.Backoff <= 0 {
 		opts.Backoff = 200 * time.Millisecond
 	}
-	return &Scraper{fetch: f, opts: opts}
+	return &Scraper{fetch: f, opts: opts, limiter: newHostLimiter(opts.Rate)}
 }
 
 // Run scrapes every URL concurrently and returns the results in the same order
@@ -116,9 +120,15 @@ func (s *Scraper) RunSequential(ctx context.Context, urls []string) []model.Page
 func (s *Scraper) process(ctx context.Context, job model.Job) model.PageResult {
 	res := model.PageResult{Index: job.Index, URL: job.URL}
 	backoff := s.opts.Backoff
+	host := hostOf(job.URL)
 
 	for attempt := 0; attempt <= s.opts.Retries; attempt++ {
 		res.Attempts = attempt + 1
+		// Politeness: wait for this host's turn before every request, including retries.
+		if err := s.limiter.Wait(ctx, host); err != nil {
+			res.ErrorKind, res.Error = fetcher.KindCancelled, err.Error()
+			return res
+		}
 		start := time.Now()
 		resp, err := s.fetch.Fetch(ctx, job.URL)
 		res.ResponseMs = time.Since(start).Milliseconds()
@@ -163,4 +173,14 @@ func (s *Scraper) process(ctx context.Context, job model.Job) model.PageResult {
 		}
 	}
 	return res
+}
+
+// hostOf returns the host (with port) of a URL, lower-cased, used as the
+// rate-limiter key. Unparseable URLs share the empty key.
+func hostOf(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Host)
 }

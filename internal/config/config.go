@@ -18,8 +18,9 @@ type Config struct {
 	Workers   int
 	Timeout   time.Duration
 	Retries   int
-	Format    string // "json" or "csv"
-	Output    string // file path, or "-" for standard output
+	Rate      float64 // max requests per second per host; 0 = unlimited
+	Format    string  // "json" or "csv"
+	Output    string  // file path, or "-" for standard output
 	UserAgent string
 }
 
@@ -33,6 +34,7 @@ func Parse(args []string, errOut io.Writer) (Config, error) {
 	fs.IntVar(&c.Workers, "workers", 10, "number of concurrent workers (1-100)")
 	fs.DurationVar(&c.Timeout, "timeout", 10*time.Second, "timeout for each HTTP request")
 	fs.IntVar(&c.Retries, "retries", 2, "retries for temporary failures (0-5)")
+	fs.Float64Var(&c.Rate, "rate", 5, "max requests per second to any single host (0 = unlimited)")
 	fs.StringVar(&c.Format, "format", "json", "output format: json or csv")
 	fs.StringVar(&c.Output, "out", "", "output file ('-' for stdout; default results.<format>)")
 	fs.StringVar(&c.UserAgent, "user-agent", "GoWebScraper/0.2 (student capstone project)", "User-Agent header")
@@ -61,6 +63,8 @@ func (c Config) validate() error {
 		return fmt.Errorf("-timeout must be positive")
 	case c.Retries < 0 || c.Retries > 5:
 		return fmt.Errorf("-retries must be between 0 and 5 (got %d)", c.Retries)
+	case c.Rate < 0 || c.Rate > 1000:
+		return fmt.Errorf("-rate must be between 0 and 1000 (got %g)", c.Rate)
 	case c.Format != "json" && c.Format != "csv":
 		return fmt.Errorf("-format must be json or csv (got %q)", c.Format)
 	}

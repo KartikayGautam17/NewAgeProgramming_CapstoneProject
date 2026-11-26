@@ -49,6 +49,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	s := scraper.New(fetcher.NewHTTPFetcher(cfg.Timeout, cfg.UserAgent), scraper.Options{
 		Workers: cfg.Workers,
 		Retries: cfg.Retries,
+		Rate:    cfg.Rate,
 		Progress: func(done, total int, r model.PageResult) {
 			status := "ok"
 			if !r.OK() {
@@ -58,7 +59,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		},
 	})
 
-	fmt.Fprintf(stderr, "Scraping %d URL(s) with %d worker(s)...\n", len(urls), cfg.Workers)
+	limit := "unlimited"
+	if cfg.Rate > 0 {
+		limit = fmt.Sprintf("%g/s per host", cfg.Rate)
+	}
+	fmt.Fprintf(stderr, "Scraping %d URL(s) with %d worker(s), rate limit: %s\n", len(urls), cfg.Workers, limit)
 	start := time.Now()
 	results := s.Run(ctx, urls)
 	elapsed := time.Since(start)
